@@ -9,6 +9,7 @@ logging.basicConfig(level=logging.INFO)
 # ----- Supabase connection -----
 SB_URL  = os.getenv("SUPABASE_URL")
 SB_KEY  = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+print("DEBUG SB_URL = ", repr(SB_URL)[:120])
 sb = create_client(SB_URL, SB_KEY)
 
 # ---------- helpers ----------
