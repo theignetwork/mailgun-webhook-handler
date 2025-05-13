@@ -27,8 +27,16 @@ def suppress_if_needed(recipient_email: str, event: str):
 @app.post("/webhook")
 async def mailgun_webhook(request: Request):
     payload   = await request.json()
-    event     = payload.get("event")       # delivered, permanent_failure, etc.
-    recipient = payload.get("recipient")   # the email address
+    event = (
+    payload.get("event")                       # 1️⃣ try top level
+    or payload.get("event-data", {}).get("event")   # 2️⃣ else look inside "event-data"
+)
+
+recipient = (
+    payload.get("recipient")                   # 1️⃣ try top level
+    or payload.get("event-data", {}).get("recipient")  # 2️⃣ else look inside "event-data"
+)
+
 
     # 1) store the raw event
     sb.table("mailgun_events").insert({
