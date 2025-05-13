@@ -26,9 +26,11 @@ def suppress_if_needed(recipient_email: str, event: str):
 # ---------- webhook ----------
 @app.post("/webhook")
 async def mailgun_webhook(request: Request):
+    print("DEBUG: entered webhook")          # <-- add
+
     payload = await request.json()
 
-    # pull event + recipient from top level OR the "event-data" wrapper
+    # pull event & recipient from top-level or "event-data"
     event = (
         payload.get("event") or
         payload.get("event-data", {}).get("event")
@@ -38,14 +40,13 @@ async def mailgun_webhook(request: Request):
         payload.get("event-data", {}).get("recipient")
     )
 
-    # 1) store the raw event
-    sb.table("mailgun_events").insert({
-        "event_type": f"p8_{event}",
-        "payload": payload
-    }).execute()
+    # (temporarily comment out Supabase work)
+    # sb.table("mailgun_events").insert({
+    #     "event_type": f"p8_{event}",
+    #     "payload": payload
+    # }).execute()
+    #
+    # suppress_if_needed(recipient, event)
 
-    # 2) auto-suppress bad addresses
-    suppress_if_needed(recipient, event)
-
-    logging.info("Stored %s → %s", event, recipient)
+    print("DEBUG: leaving webhook")          # <-- add
     return {"status": "ok"}
