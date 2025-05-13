@@ -1,52 +1,64 @@
-# main.py  — updated webhook that writes events to Supabase
-import os, logging
+import os
+import logging
 from fastapi import FastAPI, Request
-from supabase import create_client
+from supabase import create_client, Client
+from dotenv import load_dotenv
 
+# ── Load .env if you run locally ────────────────────────────────────────────────
+load_dotenv()
+
+# ── Supabase credentials (must be set as env vars in Render) ───────────────────
+SB_URL = os.getenv("SUPABASE_URL")
+SB_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+if not SB_URL or not SB_KEY:
+    raise RuntimeError("SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY missing")
+
+sb: Client = create_client(SB_URL, SB_KEY)
+
+# ── FastAPI app ────────────────────────────────────────────────────────────────
 app = FastAPI()
 logging.basicConfig(level=logging.INFO)
 
-# ----- Supabase connection -----
-SB_URL  = os.getenv("SUPABASE_URL")
-SB_KEY  = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-print("DEBUG SB_URL = ", repr(SB_URL)[:120])
-sb = create_client(SB_URL, SB_KEY)
 
-# ---------- helpers ----------
-def suppress_if_needed(recipient_email: str, event: str):
-    """
-    Turn off future outreach if the event is a hard bounce,
-    spam complaint, or unsubscribe.
-    """
+# helper: flip send_allowed = FALSE on bounce / spam / unsub
+def suppress_if_needed(recipient_email: str, event: str) -> None:
     if event in ("permanent_failure", "complained", "unsubscribed"):
-        sb.table("edu_contacts")\
-          .update({"send_allowed": False})\
+        sb.table("edu_contacts") \
+          .update({"send_allowed": False}) \
           .eq("email", recipient_email).execute()
 
-# ---------- webhook ----------
+
+# ── Mailgun webhook endpoint ───────────────────────────────────────────────────
 @app.post("/webhook")
 async def mailgun_webhook(request: Request):
-    print("DEBUG: entered webhook")          # <-- add
+    print("DEBUG: entered webhook")
 
     payload = await request.json()
 
-    # pull event & recipient from top-level or "event-data"
+    # pull event & recipient from top level OR from the "event-data" wrapper
     event = (
-        payload.get("event") or
-        payload.get("event-data", {}).get("event")
+        payload.get("event")
+        or payload.get("event-data", {}).get("event")
     )
     recipient = (
-        payload.get("recipient") or
-        payload.get("event-data", {}).get("recipient")
+        payload.get("recipient")
+        or payload.get("event-data", {}).get("recipient")
     )
 
-    # (temporarily comment out Supabase work)
-    # sb.table("mailgun_events").insert({
-    #     "event_type": f"p8_{event}",
-    #     "payload": payload
-    # }).execute()
-    #
-    # suppress_if_needed(recipient, event)
+    try:
+        # 1) store raw event
+        sb.table("mailgun_events").insert({
+            "event_type": f"p8_{event}",
+            "payload": payload
+        }).execute()
 
-    print("DEBUG: leaving webhook")          # <-- add
+        # 2) auto-suppress bad addresses
+        suppress_if_needed(recipient, event)
+
+        logging.info("Stored %s → %s", event, recipient)
+    except Exception as e:
+        logging.error("Supabase insert failed: %s", e)
+
+    print("DEBUG: leaving webhook")
     return {"status": "ok"}
