@@ -26,22 +26,22 @@ def suppress_if_needed(recipient_email: str, event: str):
 # ---------- webhook ----------
 @app.post("/webhook")
 async def mailgun_webhook(request: Request):
-    payload   = await request.json()
+    payload = await request.json()
+
+    # pull event + recipient from top level OR the "event-data" wrapper
     event = (
-    payload.get("event")                       # 1️⃣ try top level
-    or payload.get("event-data", {}).get("event")   # 2️⃣ else look inside "event-data"
-)
-
-recipient = (
-    payload.get("recipient")                   # 1️⃣ try top level
-    or payload.get("event-data", {}).get("recipient")  # 2️⃣ else look inside "event-data"
-)
-
+        payload.get("event") or
+        payload.get("event-data", {}).get("event")
+    )
+    recipient = (
+        payload.get("recipient") or
+        payload.get("event-data", {}).get("recipient")
+    )
 
     # 1) store the raw event
     sb.table("mailgun_events").insert({
         "event_type": f"p8_{event}",
-        "payload":    payload
+        "payload": payload
     }).execute()
 
     # 2) auto-suppress bad addresses
